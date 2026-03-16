@@ -1,4 +1,4 @@
-"""Load and validate YAML config for candidate building."""
+"""Load and validate YAML config for candidate building and LLM audit."""
 
 from __future__ import annotations
 
@@ -55,6 +55,8 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     audit = raw["audit"]
     target = audit.get("target", {})
     output = raw["output"]
+    llm = raw.setdefault("llm", {})
+    token_cfg = raw.setdefault("token", {})
 
     if not isinstance(joern, dict):
         raise ConfigError("joern must be an object")
@@ -73,6 +75,18 @@ def load_config(config_path: Path) -> Dict[str, Any]:
 
     # Normalize output path
     output["candidate_json"] = _resolve_path(root_dir, str(output.get("candidate_json", "")))
+
+    # Normalize audit input/output paths for the LLM audit runner.
+    input_units = str(audit.get("input_audit_units_json", "")).strip()
+    output_results = str(audit.get("output_results_json", "")).strip()
+
+    if not input_units:
+        input_units = output["candidate_json"]
+    if not output_results:
+        output_results = str((root_dir / "outputs" / "results" / "audit_results.json").resolve())
+
+    audit["input_audit_units_json"] = _resolve_path(root_dir, input_units)
+    audit["output_results_json"] = _resolve_path(root_dir, output_results)
 
     # Normalize and validate audit targets.
     # New schema: audit.target is a list of files/directories.
@@ -123,6 +137,24 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     # Set default project name and logging level
     audit.setdefault("project_name", "code_audit_candidates")
     audit.setdefault("input_mode", "target_list")
+    audit.setdefault("max_iterations", 3)
+    audit.setdefault("enable_validate", True)
+    audit.setdefault("dedup_enabled", True)
     raw["logging"].setdefault("level", "INFO")
+
+    # Set defaults for LLM and token configuration.
+    if not isinstance(llm, dict):
+        raise ConfigError("llm must be an object")
+    if not isinstance(token_cfg, dict):
+        raise ConfigError("token must be an object")
+
+    llm.setdefault("provider", "deepseek")
+    llm.setdefault("model", "deepseek-reasoner")
+    llm.setdefault("base_url", "https://api.deepseek.com")
+    llm.setdefault("api_key_env", "DEEPSEEK_API_KEY")
+    llm.setdefault("temperature", 0.0)
+    llm.setdefault("max_tokens", 4096)
+
+    token_cfg.setdefault("record_usage", True)
 
     return raw

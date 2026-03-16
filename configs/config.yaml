@@ -5,6 +5,21 @@ joern:
   # Request timeout in seconds for Joern HTTP calls.
   timeout_seconds: 120
 
+# LLM provider settings (default: DeepSeek-R1 compatible endpoint)
+llm:
+  # Provider hint for logs/metadata.
+  provider: "deepseek"
+  # DeepSeek-R1 model name on OpenAI-compatible API.
+  model: "deepseek-reasoner"
+  # Base URL for OpenAI-compatible chat completion endpoint.
+  base_url: "https://api.deepseek.com"
+  # Read API key from environment variable only (do not hardcode in YAML).
+  api_key_env: "DEEPSEEK_API_KEY"
+  # Keep deterministic output for strict JSON parsing.
+  temperature: 0.0
+  # Max output tokens per completion.
+  max_tokens: 4096
+
 # Audit input settings
 audit:
   # Optional project name shown in Joern workspace.
@@ -14,8 +29,16 @@ audit:
   target:
     - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_61a.c"
     - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_61b.c"
-    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_62a.cpp"
-    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_62b.cpp"
+  # Input audit units JSON for LLM audit runner.
+  input_audit_units_json: "outputs/context/context.json"
+  # Output file for final deduplicated audit results.
+  output_results_json: "outputs/results/audit_results.json"
+  # Maximum iterative rounds for unknown->request-context->rejudge loop.
+  max_iterations: 3
+  # Whether to run validate stage after yes/no.
+  enable_validate: true
+  # Whether to deduplicate before writing result file.
+  dedup_enabled: true
 
 # Candidate rules switches
 rules:
@@ -25,6 +48,10 @@ rules:
 output:
   # Candidate JSON output path (relative to project root or absolute path)
   candidate_json: "outputs/context/context.json"
+
+token:
+  # Record and accumulate token usage from each LLM call when available.
+  record_usage: true
 
 logging:
   level: "INFO"
