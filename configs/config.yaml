@@ -1,0 +1,30 @@
+# Joern server settings
+joern:
+  # Full URL of Joern query-sync endpoint.
+  server_url: "http://localhost:8080/query-sync"
+  # Request timeout in seconds for Joern HTTP calls.
+  timeout_seconds: 120
+
+# Audit input settings
+audit:
+  # Optional project name shown in Joern workspace.
+  project_name: "code_audit_candidates"
+  # Mixed input targets. Each item can be a file or a directory.
+  # Directories will be imported recursively by Joern.
+  target:
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_61a.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_61b.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_62a.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_62b.cpp"
+
+# Candidate rules switches
+rules:
+  enable_cwe78: true
+  enable_cwe259: false
+
+output:
+  # Candidate JSON output path (relative to project root or absolute path)
+  candidate_json: "outputs/context/context.json"
+
+logging:
+  level: "INFO"
