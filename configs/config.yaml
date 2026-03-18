@@ -18,7 +18,7 @@ llm:
   # Keep deterministic output for strict JSON parsing.
   temperature: 0.0
   # Max output tokens per completion.
-  max_tokens: 4096
+  max_tokens: 20000
 
 # Audit input settings
 audit:

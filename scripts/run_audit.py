@@ -24,8 +24,13 @@ from src.result_manager import ResultManager
 def setup_logging(level: str) -> None:
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        format="%(message)s",
+        force=True,
     )
+    # Hide verbose transport/query logs; keep concise workflow logs only.
+    logging.getLogger("src.joern_client").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def parse_args() -> argparse.Namespace:

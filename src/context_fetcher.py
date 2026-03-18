@@ -196,6 +196,31 @@ class ContextFetcher:
             errors.append(f"{error_hint}: {exc}")
             return []
 
+    @staticmethod
+    def _dedup_contexts(contexts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Deduplicate noisy contexts while preserving original order."""
+        deduped: List[Dict[str, Any]] = []
+        seen: set[Tuple[Any, ...]] = set()
+
+        for ctx in contexts:
+            ctype = str(ctx.get("context_type", ""))
+            if ctype == "macro_definition":
+                # For macros, definition text is usually what LLM needs most.
+                key = (
+                    ctype,
+                    str(ctx.get("name", "")),
+                    str(ctx.get("definition", "")).strip(),
+                )
+            else:
+                key = (ctype, json.dumps(ctx, ensure_ascii=False, sort_keys=True))
+
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(ctx)
+
+        return deduped
+
     def _fetch_function_context(self, name: str) -> Tuple[List[Dict[str, Any]], List[str]]:
         esc = self._escape_for_query(name)
         query_def = (
@@ -479,10 +504,14 @@ class ContextFetcher:
                 }
             )
 
-        if not contexts:
-            source_contexts, source_errors = self._fetch_macro_context_from_source(macro_name)
-            contexts.extend(source_contexts)
+        # Always try source scan for #define so the model gets concrete macro definitions,
+        # not only identifier usages.
+        source_contexts, source_errors = self._fetch_macro_context_from_source(macro_name)
+        contexts.extend(source_contexts)
+        if source_errors and not source_contexts:
             errors.extend(source_errors)
+
+        contexts = self._dedup_contexts(contexts)
 
         if not contexts:
             errors.append(f"macro context not found for name={macro_name}")
@@ -501,6 +530,8 @@ class ContextFetcher:
         contexts: List[Dict[str, Any]] = []
         errors: List[str] = []
 
+        seen_req: set[Tuple[str, str]] = set()
+
         for req in need_context:
             req_type = str(req.get("type", "")).strip().lower()
             name = str(req.get("name", "")).strip()
@@ -508,6 +539,11 @@ class ContextFetcher:
             if not req_type or not name:
                 errors.append(f"invalid context request: {req}")
                 continue
+
+            req_key = (req_type, name)
+            if req_key in seen_req:
+                continue
+            seen_req.add(req_key)
 
             if req_type == "function":
                 sub_ctx, sub_err = self._fetch_function_context(name)
@@ -521,4 +557,4 @@ class ContextFetcher:
             contexts.extend(sub_ctx)
             errors.extend(sub_err)
 
-        return contexts, errors
+        return self._dedup_contexts(contexts), errors

@@ -27,9 +27,6 @@ class ResultManager:
         return (
             item.get("cwe", ""),
             item.get("file_path", ""),
-            item.get("function_name", ""),
-            item.get("function_start_line", -1),
-            item.get("function_end_line", -1),
             item.get("final_decision", "unknown"),
             norm_lines,
         )
