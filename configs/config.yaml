@@ -18,7 +18,7 @@ llm:
   # Keep deterministic output for strict JSON parsing.
   temperature: 0.0
   # Max output tokens per completion.
-  max_tokens: 20000
+  max_tokens: 50000
 
 # Audit input settings
 audit:
@@ -27,8 +27,74 @@ audit:
   # Mixed input targets. Each item can be a file or a directory.
   # Directories will be imported recursively by Joern.
   target:
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_51a.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_51b.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_52a.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_52b.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_52c.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_53a.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_53b.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_53c.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_53d.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_54a.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_54b.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_54c.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_54d.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_54e.c"
     - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_61a.c"
     - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_61b.c"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_62a.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_62b.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_81_bad.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_81_goodG2B.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_81.h"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_81a.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_82_bad.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_82_goodG2B.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_82.h"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_82a.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_83_bad.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_83_goodG2B.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_83.h"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_83a.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_84_bad.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_84_goodG2B.cpp"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_84.h"
+    - "../juliet-test-suite-c/testcases/CWE78_OS_Command_Injection/s01/CWE78_OS_Command_Injection__char_connect_socket_execl_84a.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_51a.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_51b.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_52a.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_52b.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_52c.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_53a.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_53b.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_53c.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_53d.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_54a.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_54b.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_54c.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_54d.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_54e.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_61a.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_61b.c"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_62a.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_62b.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_81_bad.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_81_goodG2B.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_81.h"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_81a.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_82_bad.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_82_goodG2B.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_82.h"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_82a.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_83_bad.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_83_goodG2B.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_83.h"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_83a.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_84_bad.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_84_goodG2B.cpp"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_84.h"
+    - "../juliet-test-suite-c/testcases/CWE259_Hard_Coded_Password/CWE259_Hard_Coded_Password__w32_char_84a.cpp"
   # Input audit units JSON for LLM audit runner.
   input_audit_units_json: "outputs/context/context.json"
   # Output file for final deduplicated audit results.
@@ -37,13 +103,21 @@ audit:
   max_iterations: 3
   # Whether to run validate stage after yes/no.
   enable_validate: true
+  # New switch for validate stage (preferred). If false, skip validate and output reasoning result directly.
+  validate_stage_enabled: false
+  # If true, each LLM call starts a fresh session and includes full prompt + all accumulated contexts.
+  # If false, iterative calls continue in one conversation session.
+  stateless_llm_calls: false
   # Whether to deduplicate before writing result file.
   dedup_enabled: true
+  # Maximum code lines per function context sent to LLM.
+  # Increase this to allow larger function/context windows.
+  llm_context_max_lines: 500
 
 # Candidate rules switches
 rules:
   enable_cwe78: true
-  enable_cwe259: false
+  enable_cwe259: true
 
 output:
   # Candidate JSON output path (relative to project root or absolute path)

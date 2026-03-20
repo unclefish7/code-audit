@@ -21,61 +21,83 @@ else:
 
 
 SYSTEM_PROMPT = (
-    "You are a strict security audit assistant. "
-    "Always reply with a single JSON object only, no markdown, no extra text."
+        "你是一个严格的安全审计助手。"
+        "始终只返回一个 JSON 对象，不要使用 markdown，不要输出任何额外文本。"
 )
 
 MAIN_AUDIT_PROMPT = """
-You are auditing one code audit unit for vulnerability judgment.
+你正在审计一个代码审计单元，并给出漏洞判断。
 
-Rules:
-1. Judge only based on provided evidence/context.
-2. Output JSON only.
-3. decision must be one of: yes, no, unknown.
-4. If decision is yes or no, output fields: decision, lines, reason.
-5. If decision is unknown, output fields: decision, reason, need_context.
-6. need_context must be a non-empty array when decision=unknown.
-7. need_context[].type must be one of: function, variable, macro.
-8. need_context[] items must include name.
-9. Focus on the current candidate function and its direct dataflow/callees only.
-10. Do not request unrelated good/bad branch symbols from other paths.
+规则：
+1. 只能基于已提供的证据/上下文进行判断。
+2. 只输出 JSON。
+3. decision 必须是 yes、no、unknown 之一。
+4. 如果 decision 是 yes 或 no，输出字段：decision、lines、reason。
+5. 如果 decision 是 unknown，输出字段：decision、reason、need_context。
+6. 当 decision=unknown 时，need_context 必须是非空数组。
+7. need_context[].type 必须是 function、variable、macro 之一。
+8. need_context[] 每个元素都必须包含 name。
+9. 只关注当前 candidate 函数及其直接数据流/直接被调函数。
+10. 不要请求其他路径中无关的 good/bad 分支符号。
+11. 对于 type=function 的请求，只能请求代码中真实存在且精确的符号名。
+12. 不要构造 caller_of_X 或 callee_of_X 这类伪函数名。
+13. 如果要查看调用者/被调用者，请请求真实目标函数名本身。
+14. 每个函数相关上下文都包含：file_path、function_start_line、function_end_line、函数源码。
+15. 如果 decision 为 yes，lines 必须是当前文件中漏洞行号组成的非空整数数组。
+16. 不要把注释标签当作函数请求（例如 badSource/goodSource/connect_socket），除非它们在代码里是实际符号。
 
-Schema for yes/no:
+yes/no 的输出结构：
 {
   "decision": "yes",
   "lines": [76],
   "reason": "short reason"
 }
 
-Schema for unknown:
+unknown 的输出结构：
 {
   "decision": "unknown",
   "reason": "short reason",
   "need_context": [
-    {"type": "function", "name": "badSource"}
+        {"type": "function", "name": "actual_existing_function_name"}
   ]
 }
 
-Audit unit JSON:
+审计单元 JSON：
 {unit_json}
 """.strip()
 
 CONTINUE_PROMPT = """
-Additional context is appended below. Continue the same audit and output JSON only.
+下面追加了额外上下文。请继续同一审计，并且仅输出 JSON。
 
-Additional contexts JSON:
+追加上下文 JSON：
 {contexts_json}
 """.strip()
 
+YES_LINES_FIX_PROMPT = """
+你上一次输出中 decision=yes，但没有给出有效且非空的 lines。
+请基于已有证据重新判断，并且只输出 JSON。
+当 decision=yes 时，lines 必须是非空整数数组。
+""".strip()
+
+CONTEXT_MISS_PROMPT = """
+请求的上下文未找到。
+
+上下文获取错误：
+{errors_json}
+
+请继续同一审计，并且只输出 JSON。
+如果 decision 仍为 unknown，请使用真实存在且精确的符号名请求不同上下文。
+""".strip()
+
 VALIDATE_PROMPT = """
-Validate your prior conclusion using all conversation evidence.
+请基于当前会话中的全部证据校验你之前的结论。
 
-Rules:
-1. Output JSON only.
-2. If evidence is sufficient, return validated=true and keep final_decision as yes/no.
-3. If evidence is insufficient/contradictory, return validated=false and final_decision=unknown.
+规则：
+1. 只输出 JSON。
+2. 如果证据充分，返回 validated=true，并保持 final_decision 为 yes/no。
+3. 如果证据不足或存在矛盾，返回 validated=false，并将 final_decision 设为 unknown。
 
-Schema:
+输出结构：
 {
   "validated": true,
   "final_decision": "yes",
@@ -96,8 +118,24 @@ class AuditRunner:
 
         audit_cfg = config.get("audit", {})
         self.max_iterations = int(audit_cfg.get("max_iterations", 3))
-        self.enable_validate = bool(audit_cfg.get("enable_validate", True))
+        self.enable_validate = bool(
+            audit_cfg.get("validate_stage_enabled", audit_cfg.get("enable_validate", True))
+        )
+        self.stateless_llm_calls = bool(audit_cfg.get("stateless_llm_calls", False))
         self.record_usage = bool(config.get("token", {}).get("record_usage", True))
+        self.llm_context_max_lines = int(audit_cfg.get("llm_context_max_lines", 500))
+
+    def _truncate_code_for_llm(self, code_text: str) -> str:
+        """Limit code context length before sending to LLM."""
+        text = str(code_text or "")
+        lines = text.splitlines()
+        if len(lines) <= self.llm_context_max_lines:
+            return text
+
+        kept = lines[: self.llm_context_max_lines]
+        omitted = len(lines) - self.llm_context_max_lines
+        kept.append(f"/* ... truncated {omitted} lines by llm_context_max_lines ... */")
+        return "\n".join(kept)
 
     @staticmethod
     def _init_usage() -> Dict[str, int]:
@@ -191,11 +229,80 @@ class AuditRunner:
         return sorted(set(result))
 
     @staticmethod
-    def _build_result_base(unit: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_function_range(unit: Dict[str, Any]) -> Dict[str, int]:
+        contexts = unit.get("contexts", [])
+        if not isinstance(contexts, list):
+            return {"function_start_line": -1, "function_end_line": -1}
+
+        for ctx in contexts:
+            if not isinstance(ctx, dict):
+                continue
+            if str(ctx.get("context_type", "")).strip() != "function_source":
+                continue
+            try:
+                start = int(ctx.get("function_start_line", -1))
+            except (TypeError, ValueError):
+                start = -1
+            try:
+                end = int(ctx.get("function_end_line", -1))
+            except (TypeError, ValueError):
+                end = -1
+            return {"function_start_line": start, "function_end_line": end}
+
+        return {"function_start_line": -1, "function_end_line": -1}
+
+    @classmethod
+    def _build_result_base(cls, unit: Dict[str, Any]) -> Dict[str, Any]:
         candidate = unit.get("candidate", {})
+        func_range = cls._extract_function_range(unit)
         return {
             "cwe": candidate.get("cwe", ""),
             "file_path": candidate.get("file_path", ""),
+            "function_start_line": func_range["function_start_line"],
+            "function_end_line": func_range["function_end_line"],
+        }
+
+    def _normalize_context_for_llm(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
+        ctype = str(ctx.get("context_type", "")).strip()
+        def as_int(value: Any) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return -1
+
+        if ctype in {
+            "function_source",
+            "function",
+            "function_caller_source",
+            "function_callee_source",
+            "function_fuzzy_match",
+        }:
+            src_raw = str(ctx.get("source", "") or ctx.get("function_source", ""))
+            src = self._truncate_code_for_llm(src_raw)
+            return {
+                "context_type": ctype,
+                "name": str(ctx.get("name", "") or ctx.get("function_name", "")),
+                "file_path": str(ctx.get("file_path", "")),
+                "function_start_line": as_int(ctx.get("function_start_line", -1)),
+                "function_end_line": as_int(ctx.get("function_end_line", -1)),
+                "source": src,
+            }
+        return ctx
+
+    def _build_unit_for_llm(self, unit: Dict[str, Any]) -> Dict[str, Any]:
+        candidate = unit.get("candidate", {})
+        contexts_raw = unit.get("contexts", [])
+        contexts_norm: List[Dict[str, Any]] = []
+
+        if isinstance(contexts_raw, list):
+            for ctx in contexts_raw:
+                if isinstance(ctx, dict):
+                    contexts_norm.append(self._normalize_context_for_llm(ctx))
+
+        return {
+            "unit_id": unit.get("unit_id", ""),
+            "candidate": candidate,
+            "contexts": contexts_norm,
         }
 
     def _chat_once(self, messages: List[Dict[str, str]], usage_total: Dict[str, int]) -> Optional[Dict[str, Any]]:
@@ -218,6 +325,23 @@ class AuditRunner:
         parsed = self._parse_json(text)
         return parsed
 
+    def _chat_with_full_prompt(
+        self,
+        unit: Dict[str, Any],
+        usage_total: Dict[str, int],
+        extra_instruction: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        unit_json = json.dumps(self._build_unit_for_llm(unit), ensure_ascii=False, indent=2)
+        user_content = MAIN_AUDIT_PROMPT.replace("{unit_json}", unit_json)
+        if extra_instruction.strip():
+            user_content = f"{user_content}\n\n额外要求：\n{extra_instruction.strip()}"
+
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_content},
+        ]
+        return self._chat_once(messages=messages, usage_total=usage_total)
+
     def _run_single_unit(self, unit: Dict[str, Any]) -> Dict[str, Any]:
         unit_base = self._build_result_base(unit)
         usage_total = self._init_usage()
@@ -229,10 +353,12 @@ class AuditRunner:
                 "role": "user",
                 "content": MAIN_AUDIT_PROMPT.replace(
                     "{unit_json}",
-                    json.dumps(unit, ensure_ascii=False, indent=2),
+                    json.dumps(self._build_unit_for_llm(unit), ensure_ascii=False, indent=2),
                 ),
             }
         )
+
+        stateless_extra_instruction = ""
 
         decision = "unknown"
         lines: List[int] = []
@@ -243,7 +369,14 @@ class AuditRunner:
         for idx in range(1, self.max_iterations + 1):
             iterations = idx
             self.logger.info("第%d轮推理", idx)
-            parsed = self._chat_once(messages=messages, usage_total=usage_total)
+            if self.stateless_llm_calls:
+                parsed = self._chat_with_full_prompt(
+                    unit=unit,
+                    usage_total=usage_total,
+                    extra_instruction=stateless_extra_instruction,
+                )
+            else:
+                parsed = self._chat_once(messages=messages, usage_total=usage_total)
             if parsed is None:
                 self.logger.error("LLM输出不是合法JSON: %s", unit_base.get("file_path", "unknown"))
                 decision = "unknown"
@@ -260,6 +393,17 @@ class AuditRunner:
                 decision = resp_decision
                 lines = self._normalize_lines(parsed.get("lines", []))
                 reason = str(parsed.get("reason", "")).strip()
+                if decision == "yes" and not lines:
+                    self.logger.warning("decision=yes but lines empty for %s", unit_base.get("file_path", "unknown"))
+                    if idx < self.max_iterations:
+                        if self.stateless_llm_calls:
+                            stateless_extra_instruction = YES_LINES_FIX_PROMPT
+                        else:
+                            messages.append({"role": "user", "content": YES_LINES_FIX_PROMPT})
+                        decision = "unknown"
+                        continue
+                    decision = "unknown"
+                    reason = "decision yes without valid lines"
                 break
 
             if resp_decision != "unknown":
@@ -326,6 +470,21 @@ class AuditRunner:
                 self.logger.warning("Context fetch issue for %s: %s", unit_base.get("file_path", "unknown"), err)
 
             if not extra_contexts:
+                reason = "requested context not found"
+                if idx < self.max_iterations:
+                    miss_prompt = CONTEXT_MISS_PROMPT.format(
+                        errors_json=json.dumps(errors, ensure_ascii=False, indent=2)
+                    )
+                    if self.stateless_llm_calls:
+                        stateless_extra_instruction = miss_prompt
+                    else:
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": miss_prompt,
+                            }
+                        )
+                    continue
                 decision = "unknown"
                 lines = []
                 reason = "unable to fetch requested contexts"
@@ -337,22 +496,37 @@ class AuditRunner:
             else:
                 unit["contexts"] = extra_contexts
 
-            messages.append(
-                {
-                    "role": "user",
-                    "content": CONTINUE_PROMPT.format(
-                        contexts_json=json.dumps(extra_contexts, ensure_ascii=False, indent=2)
-                    ),
-                }
-            )
+            if self.stateless_llm_calls:
+                # 下一轮会带完整上下文重建提示词，不依赖历史会话。
+                stateless_extra_instruction = ""
+            else:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": CONTINUE_PROMPT.format(
+                            contexts_json=json.dumps(
+                                [self._normalize_context_for_llm(c) for c in extra_contexts],
+                                ensure_ascii=False,
+                                indent=2,
+                            )
+                        ),
+                    }
+                )
 
             # Context is appended as a user message; continue to next iteration for re-judgement.
             reason = str(parsed.get("reason", "insufficient context")).strip()
             continue
 
         if decision in ("yes", "no") and self.enable_validate:
-            messages.append({"role": "user", "content": VALIDATE_PROMPT})
-            parsed_validate = self._chat_once(messages=messages, usage_total=usage_total)
+            if self.stateless_llm_calls:
+                parsed_validate = self._chat_with_full_prompt(
+                    unit=unit,
+                    usage_total=usage_total,
+                    extra_instruction=VALIDATE_PROMPT,
+                )
+            else:
+                messages.append({"role": "user", "content": VALIDATE_PROMPT})
+                parsed_validate = self._chat_once(messages=messages, usage_total=usage_total)
             if parsed_validate is None:
                 self.logger.error("Invalid validate JSON for %s", unit_base.get("file_path", "unknown"))
                 validated = False
@@ -363,6 +537,9 @@ class AuditRunner:
                     decision = final_decision
                 lines = self._normalize_lines(parsed_validate.get("lines", lines))
                 reason = str(parsed_validate.get("reason", reason)).strip()
+                if decision == "yes" and not lines:
+                    decision = "unknown"
+                    reason = "validated yes without valid lines"
                 if reason:
                     self.logger.info("Validate理由: %s", reason)
 

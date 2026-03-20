@@ -20,6 +20,49 @@ class ContextFetcher:
         self.source_paths = [str(Path(p).resolve()) for p in (source_paths or [])]
 
     @staticmethod
+    def _is_source_like_file(path: Path) -> bool:
+        return path.suffix.lower() in {
+            ".c",
+            ".cc",
+            ".cpp",
+            ".cxx",
+            ".h",
+            ".hh",
+            ".hpp",
+            ".hxx",
+        }
+
+    def _iter_source_files(self) -> List[Path]:
+        files: List[Path] = []
+        seen: set[str] = set()
+
+        for raw_path in self.source_paths:
+            path = Path(raw_path)
+            if not path.exists():
+                continue
+
+            if path.is_file() and self._is_source_like_file(path):
+                resolved = str(path.resolve())
+                if resolved not in seen:
+                    seen.add(resolved)
+                    files.append(path)
+                continue
+
+            if not path.is_dir():
+                continue
+
+            for child in path.rglob("*"):
+                if not child.is_file() or not self._is_source_like_file(child):
+                    continue
+                resolved = str(child.resolve())
+                if resolved in seen:
+                    continue
+                seen.add(resolved)
+                files.append(child)
+
+        return files
+
+    @staticmethod
     def _escape_for_query(raw: str) -> str:
         return raw.replace("\\", "\\\\").replace('"', '\\"')
 
@@ -333,6 +376,131 @@ class ContextFetcher:
 
         return contexts, errors
 
+    def _fetch_function_context_fuzzy(self, name_fragment: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+        esc = self._escape_for_query(re.escape(name_fragment))
+        query = (
+            'cpg.method.name("(?i).*' + esc + '.*")'
+            '.map(m => (m.name, m.filename, m.lineNumber.getOrElse(-1), '
+            'm.lineNumberEnd.getOrElse(-1), m.code)).l'
+        )
+
+        contexts: List[Dict[str, Any]] = []
+        errors: List[str] = []
+        rows = self._query_safe(query, f"fuzzy function context query failed for {name_fragment}", errors)
+
+        for row in rows[:10]:
+            if len(row) < 5:
+                continue
+            contexts.append(
+                {
+                    "context_type": "function_fuzzy_match",
+                    "requested_name": name_fragment,
+                    "name": self._decode_token(row[0]),
+                    "file_path": self._decode_token(row[1]),
+                    "function_start_line": self._to_int(row[2]),
+                    "function_end_line": self._to_int(row[3]),
+                    "source": self._decode_token(row[4]),
+                }
+            )
+
+        if not contexts:
+            errors.append(f"fuzzy function context not found for name_fragment={name_fragment}")
+
+        return contexts, errors
+
+    def _fetch_caller_function_context(self, callee_name: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+        esc = self._escape_for_query(callee_name)
+        query = (
+            'cpg.method.nameExact("' + esc + '")'
+            '.caller.map(m => (m.name, m.filename, m.lineNumber.getOrElse(-1), '
+            'm.lineNumberEnd.getOrElse(-1), m.code)).l'
+        )
+
+        contexts: List[Dict[str, Any]] = []
+        errors: List[str] = []
+        rows = self._query_safe(query, f"caller function context query failed for {callee_name}", errors)
+
+        for row in rows[:10]:
+            if len(row) < 5:
+                continue
+            contexts.append(
+                {
+                    "context_type": "function_caller_source",
+                    "name": self._decode_token(row[0]),
+                    "file_path": self._decode_token(row[1]),
+                    "function_start_line": self._to_int(row[2]),
+                    "function_end_line": self._to_int(row[3]),
+                    "source": self._decode_token(row[4]),
+                    "callee_name": callee_name,
+                }
+            )
+
+        if not contexts:
+            errors.append(f"caller function context not found for callee={callee_name}")
+
+        return contexts, errors
+
+    def _fetch_callee_function_context(self, caller_name: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+        esc = self._escape_for_query(caller_name)
+        query = (
+            'cpg.method.nameExact("' + esc + '")'
+            '.callee.map(m => (m.name, m.filename, m.lineNumber.getOrElse(-1), '
+            'm.lineNumberEnd.getOrElse(-1), m.code)).l'
+        )
+
+        contexts: List[Dict[str, Any]] = []
+        errors: List[str] = []
+        rows = self._query_safe(query, f"callee function context query failed for {caller_name}", errors)
+
+        for row in rows[:10]:
+            if len(row) < 5:
+                continue
+            contexts.append(
+                {
+                    "context_type": "function_callee_source",
+                    "name": self._decode_token(row[0]),
+                    "file_path": self._decode_token(row[1]),
+                    "function_start_line": self._to_int(row[2]),
+                    "function_end_line": self._to_int(row[3]),
+                    "source": self._decode_token(row[4]),
+                    "caller_name": caller_name,
+                }
+            )
+
+        if not contexts:
+            errors.append(f"callee function context not found for caller={caller_name}")
+
+        return contexts, errors
+
+    def _fetch_function_context_by_request(self, requested_name: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+        """Resolve function requests, including relationship-style names from LLM."""
+        name = requested_name.strip()
+        if not name:
+            return [], ["function context request name is empty"]
+
+        caller_prefix = "caller_of_"
+        callee_prefix = "callee_of_"
+
+        if name.startswith(caller_prefix):
+            callee_name = name[len(caller_prefix) :].strip()
+            if not callee_name:
+                return [], [f"invalid function request name={requested_name}"]
+            return self._fetch_caller_function_context(callee_name)
+
+        if name.startswith(callee_prefix):
+            caller_name = name[len(callee_prefix) :].strip()
+            if not caller_name:
+                return [], [f"invalid function request name={requested_name}"]
+            return self._fetch_callee_function_context(caller_name)
+
+        exact_ctx, exact_err = self._fetch_function_context(name)
+        if exact_ctx:
+            return exact_ctx, exact_err
+
+        # Best-effort fallback for partial/hinted names (e.g., "connect_socket").
+        fuzzy_ctx, fuzzy_err = self._fetch_function_context_fuzzy(name)
+        return fuzzy_ctx, exact_err + fuzzy_err
+
     def _fetch_variable_context(self, function_name: str, var_name: str) -> Tuple[List[Dict[str, Any]], List[str]]:
         esc_var = self._escape_for_query(var_name)
         esc_func = self._escape_for_query(function_name)
@@ -444,11 +612,7 @@ class ContextFetcher:
         errors: List[str] = []
 
         pattern = re.compile(r"^\s*#\s*define\s+" + re.escape(macro_name) + r"\b(.*)$")
-        for raw_path in self.source_paths:
-            path = Path(raw_path)
-            if not path.exists() or not path.is_file():
-                continue
-
+        for path in self._iter_source_files():
             try:
                 lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
             except OSError as exc:
@@ -546,7 +710,7 @@ class ContextFetcher:
             seen_req.add(req_key)
 
             if req_type == "function":
-                sub_ctx, sub_err = self._fetch_function_context(name)
+                sub_ctx, sub_err = self._fetch_function_context_by_request(name)
             elif req_type == "variable":
                 sub_ctx, sub_err = self._fetch_variable_context(function_name=function_name, var_name=name)
             elif req_type == "macro":

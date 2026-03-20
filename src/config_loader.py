@@ -139,7 +139,21 @@ def load_config(config_path: Path) -> Dict[str, Any]:
     audit.setdefault("input_mode", "target_list")
     audit.setdefault("max_iterations", 3)
     audit.setdefault("enable_validate", True)
+    audit.setdefault("validate_stage_enabled", audit.get("enable_validate", True))
+    audit["enable_validate"] = bool(audit.get("validate_stage_enabled", audit.get("enable_validate", True)))
+    audit.setdefault("stateless_llm_calls", False)
+    audit["stateless_llm_calls"] = bool(audit.get("stateless_llm_calls", False))
     audit.setdefault("dedup_enabled", True)
+    audit.setdefault("llm_context_max_lines", 500)
+
+    try:
+        audit["llm_context_max_lines"] = int(audit.get("llm_context_max_lines", 500))
+    except (TypeError, ValueError) as exc:
+        raise ConfigError("audit.llm_context_max_lines must be an integer") from exc
+
+    if audit["llm_context_max_lines"] <= 0:
+        raise ConfigError("audit.llm_context_max_lines must be > 0")
+
     raw["logging"].setdefault("level", "INFO")
 
     # Set defaults for LLM and token configuration.
