@@ -15,9 +15,11 @@ if __package__ in (None, ""):
         sys.path.insert(0, str(project_root))
     from src.context_fetcher import ContextFetcher
     from src.llm_client import LLMClient, LLMClientError
+    from src.path_utils import normalize_audit_file_path
 else:
     from .context_fetcher import ContextFetcher
     from .llm_client import LLMClient, LLMClientError
+    from .path_utils import normalize_audit_file_path
 
 
 SYSTEM_PROMPT = (
@@ -257,7 +259,7 @@ class AuditRunner:
         func_range = cls._extract_function_range(unit)
         return {
             "cwe": candidate.get("cwe", ""),
-            "file_path": candidate.get("file_path", ""),
+            "file_path": normalize_audit_file_path(candidate.get("file_path", "")),
             "function_start_line": func_range["function_start_line"],
             "function_end_line": func_range["function_end_line"],
         }
@@ -282,7 +284,7 @@ class AuditRunner:
             return {
                 "context_type": ctype,
                 "name": str(ctx.get("name", "") or ctx.get("function_name", "")),
-                "file_path": str(ctx.get("file_path", "")),
+                "file_path": normalize_audit_file_path(ctx.get("file_path", "")),
                 "function_start_line": as_int(ctx.get("function_start_line", -1)),
                 "function_end_line": as_int(ctx.get("function_end_line", -1)),
                 "source": src,

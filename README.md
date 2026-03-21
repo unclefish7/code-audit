@@ -115,6 +115,26 @@ python scripts/render_results_md.py --joern-fallback
 
 输出内容会保留原结果字段，并在每个 bug line 下附带上下文源码片段。
 
+### 5. 对已有结果做去重（可选）
+
+如果你已经有 `outputs/results/audit_results.json`，可以单独执行去重脚本。  
+去重键为：`file_path + function_start_line + function_end_line + bug_lines`（按升序去重后比较）。  
+其中 `file_path` 会做路径归一化，`CWE259_Hard_Coded_Password/xxx.c` 与 `xxx.c`（当文件名以目录名开头）会被视为同一路径。
+
+```bash
+cd code_audit
+python scripts/dedup_audit_results.py --dry-run
+python scripts/dedup_audit_results.py
+```
+
+可选输出到新文件：
+
+```bash
+python scripts/dedup_audit_results.py \
+  --input outputs/results/audit_results.json \
+  --output outputs/results/audit_results_deduped.json
+```
+
 ## 关键文件
 
 1. configs/config.yaml: 主配置文件

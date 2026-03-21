@@ -8,6 +8,7 @@ import re
 from typing import Any, Dict, List
 
 from .joern_client import JoernClient, JoernClientError, extract_records
+from .path_utils import normalize_audit_file_path
 
 
 class CandidateExtractorError(Exception):
@@ -232,7 +233,7 @@ class CandidateExtractor:
             match_code = self._unescape_scala_string(row[1])
             match_line = self._to_int(row[2])
             function_name = self._unescape_scala_string(row[3])
-            file_path = self._unescape_scala_string(row[4])
+            file_path = normalize_audit_file_path(self._unescape_scala_string(row[4]))
             function_start = self._to_int(row[5])
             function_end = self._to_int(row[6])
             function_source = self._unescape_scala_string(row[7])
@@ -277,7 +278,7 @@ class CandidateExtractor:
             match_code = self._unescape_scala_string(row[1])
             match_line = self._to_int(row[2])
             function_name = self._unescape_scala_string(row[3])
-            file_path = self._unescape_scala_string(row[4])
+            file_path = normalize_audit_file_path(self._unescape_scala_string(row[4]))
 
             unit_id = self._build_unit_id(
                 cwe=cwe,
@@ -343,7 +344,7 @@ class CandidateExtractor:
             "cwe": record.get("cwe", default_cwe),
             "rule_type": record.get("rule_type", "unknown"),
             "function_name": record.get("function_name", ""),
-            "file_path": record.get("file_path", ""),
+            "file_path": normalize_audit_file_path(record.get("file_path", "")),
             "line_number": line_number,
             "code": record.get("code", ""),
         }

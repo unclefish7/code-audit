@@ -58,18 +58,99 @@ def _derive_relative_base(input_targets: list[str]) -> Path | None:
     return common.resolve()
 
 
-def _relativize_path(raw_path: str, base_path: Path | None) -> str:
-    path_obj = Path(raw_path)
-    if path_obj.is_absolute() and base_path is not None:
+def _derive_testcases_root(input_targets: list[str]) -> Path | None:
+    marker = "/juliet-test-suite-c/testcases/"
+    for raw in input_targets:
+        full = str(Path(raw).resolve()).replace("\\", "/")
+        idx = full.find(marker)
+        if idx >= 0:
+            return Path(full[: idx + len(marker)].rstrip("/"))
+    return None
+
+
+def _expand_target_files(input_targets: list[str]) -> list[Path]:
+    files: list[Path] = []
+    seen: set[str] = set()
+    for raw in input_targets:
+        p = Path(raw).resolve()
+        if p.is_file():
+            key = str(p)
+            if key not in seen:
+                seen.add(key)
+                files.append(p)
+            continue
+        if p.is_dir():
+            for child in p.rglob("*"):
+                if not child.is_file():
+                    continue
+                rp = child.resolve()
+                key = str(rp)
+                if key in seen:
+                    continue
+                seen.add(key)
+                files.append(rp)
+    return files
+
+
+def _build_basename_lookup(known_files: list[Path], preferred_root: Path | None) -> dict[str, str]:
+    if preferred_root is None:
+        return {}
+    bucket: dict[str, list[str]] = {}
+    for file_path in known_files:
         try:
-            rel = path_obj.resolve().relative_to(base_path.resolve())
-            return rel.as_posix()
+            rel = file_path.resolve().relative_to(preferred_root.resolve()).as_posix()
         except ValueError:
-            return path_obj.as_posix()
-    return path_obj.as_posix()
+            continue
+        bucket.setdefault(file_path.name, []).append(rel)
+
+    lookup: dict[str, str] = {}
+    for basename, rels in bucket.items():
+        uniq = sorted(set(rels))
+        if len(uniq) == 1:
+            lookup[basename] = uniq[0]
+    return lookup
 
 
-def _relativize_audit_unit_paths(audit_units: list[dict[str, Any]], base_path: Path | None) -> None:
+def _relativize_path(
+    raw_path: str,
+    base_path: Path | None,
+    preferred_root: Path | None,
+    basename_lookup: dict[str, str],
+) -> str:
+    path_obj = Path(raw_path)
+    if path_obj.is_absolute():
+        if preferred_root is not None:
+            try:
+                return path_obj.resolve().relative_to(preferred_root.resolve()).as_posix()
+            except ValueError:
+                pass
+        if base_path is not None:
+            try:
+                return path_obj.resolve().relative_to(base_path.resolve()).as_posix()
+            except ValueError:
+                pass
+        return path_obj.name
+
+    normalized = raw_path.replace("\\", "/").strip("/")
+    marker = "juliet-test-suite-c/testcases/"
+    if normalized.startswith(marker):
+        normalized = normalized[len(marker) :]
+    if "/" in normalized:
+        return normalized
+
+    mapped = basename_lookup.get(normalized)
+    if mapped:
+        return mapped
+
+    return normalized
+
+
+def _relativize_audit_unit_paths(
+    audit_units: list[dict[str, Any]],
+    base_path: Path | None,
+    preferred_root: Path | None,
+    basename_lookup: dict[str, str],
+) -> None:
     """Convert audit unit candidate/context file paths to base-relative form where possible."""
     for unit in audit_units:
         candidate = unit.get("candidate", {})
@@ -77,7 +158,12 @@ def _relativize_audit_unit_paths(audit_units: list[dict[str, Any]], base_path: P
 
         cand_path = str(candidate.get("file_path", "")).strip()
         if cand_path:
-            candidate["file_path"] = _relativize_path(cand_path, base_path)
+            candidate["file_path"] = _relativize_path(
+                cand_path,
+                base_path=base_path,
+                preferred_root=preferred_root,
+                basename_lookup=basename_lookup,
+            )
 
         if isinstance(contexts, list):
             for ctx in contexts:
@@ -85,7 +171,12 @@ def _relativize_audit_unit_paths(audit_units: list[dict[str, Any]], base_path: P
                     continue
                 ctx_path = str(ctx.get("file_path", "")).strip()
                 if ctx_path:
-                    ctx["file_path"] = _relativize_path(ctx_path, base_path)
+                    ctx["file_path"] = _relativize_path(
+                        ctx_path,
+                        base_path=base_path,
+                        preferred_root=preferred_root,
+                        basename_lookup=basename_lookup,
+                    )
 
 
 def main() -> int:
@@ -132,7 +223,15 @@ def main() -> int:
         return 1
 
     base_path = _derive_relative_base(input_targets=build_info["input_targets"])
-    _relativize_audit_unit_paths(audit_units, base_path)
+    preferred_root = _derive_testcases_root(input_targets=build_info["input_targets"])
+    known_files = _expand_target_files(input_targets=build_info["input_targets"])
+    basename_lookup = _build_basename_lookup(known_files=known_files, preferred_root=preferred_root)
+    _relativize_audit_unit_paths(
+        audit_units,
+        base_path=base_path,
+        preferred_root=preferred_root,
+        basename_lookup=basename_lookup,
+    )
 
     output_path = Path(config["output"]["candidate_json"]).resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -143,7 +242,11 @@ def main() -> int:
             "input_mode": config["audit"].get("input_mode", "target_list"),
             "project_name": build_info["project_name"],
         },
-        "relative_path_root": str(base_path.resolve()) if base_path is not None else "",
+        "relative_path_root": (
+            str(preferred_root.resolve())
+            if preferred_root is not None
+            else (str(base_path.resolve()) if base_path is not None else "")
+        ),
         "input_targets": build_info["input_targets"],
         "rules": {
             "enable_cwe78": bool(config["rules"].get("enable_cwe78", False)),

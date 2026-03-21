@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from .path_utils import normalize_audit_file_path
+
 
 class ResultManager:
     """Load, deduplicate, and write final audit results."""
@@ -36,19 +38,7 @@ class ResultManager:
 
     @staticmethod
     def _normalize_file_path(raw_path: Any) -> str:
-        value = str(raw_path or "").strip().replace("\\", "/")
-        if not value:
-            return ""
-
-        marker = "/juliet-test-suite-c/"
-        idx = value.find(marker)
-        if idx >= 0:
-            return value[idx + len(marker) :].strip("/")
-
-        p = Path(value)
-        if p.is_absolute():
-            return p.name
-        return value.strip("/")
+        return normalize_audit_file_path(raw_path)
 
     @staticmethod
     def _format_result_for_output(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
